@@ -30,19 +30,18 @@
 
 ### Способ 1 — GitHub Pages (рекомендую)
 
-1. Открой репозиторий: https://github.com/bighatlogandecim/nailbot
+1. Открой репозиторий: https://github.com/bighatlogandecim/mindvault
 2. **Settings → Pages**
 3. Source: **Deploy from a branch**
-4. Branch: **`claude/mindvault-mvp-app-inventor-AndjC`** / `/` (root)
+4. Branch: **`claude/nailbot-mindvault-pwa-setup-FmDH2`** / `/` (root)
 5. Save → подожди 1–2 минуты
-6. На телефоне открой `https://bighatlogandecim.github.io/nailbot/mindvault-pwa/`
+6. На телефоне открой `https://bighatlogandecim.github.io/mindvault/`
 7. В Chrome: **меню (⋮) → Установить приложение** (или «Добавить на главный экран»)
 8. Готово — иконка на рабочем столе, открывается без браузерной строки
 
 ### Способ 2 — локальный сервер (если есть Python на пк)
 
 ```bash
-cd mindvault-pwa
 python3 -m http.server 8000
 ```
 Открой `http://<твой-ip>:8000` на телефоне в той же Wi-Fi-сети.

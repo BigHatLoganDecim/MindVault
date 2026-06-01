@@ -39,7 +39,7 @@
 После правок в `../index.html`, `../sw.js` и пр.:
 
 ```bash
-cd mindvault-pwa/android
+cd android
 ./build.sh
 ```
 
