@@ -90,17 +90,17 @@
       cursor: pointer; transition: all 0.15s; white-space: nowrap;
     }
     .chip.active { background: var(--primary); color: white; border-color: var(--primary); }
+    #thoughts-list { overflow: hidden; }
     .thought-card {
       background: var(--card); border-radius: 14px; padding: 14px 16px;
       margin-bottom: 10px; display: flex; align-items: flex-start; gap: 12px;
-      box-shadow: var(--shadow); cursor: pointer; transition: transform 0.08s;
-      animation: slideIn 0.25s ease-out; user-select: none;
+      box-shadow: var(--shadow); cursor: pointer;
+      animation: slideIn 0.25s ease-out; user-select: none; touch-action: pan-y;
     }
     @keyframes slideIn {
       from { opacity: 0; transform: translateY(8px); }
       to { opacity: 1; transform: translateY(0); }
     }
-    .thought-card:active { transform: scale(0.98); }
     .thought-card.done { opacity: 0.55; }
     .thought-card.done .thought-text { text-decoration: line-through; color: var(--text-secondary); }
     .check-circle {
@@ -117,6 +117,13 @@
       margin-top: 6px; font-size: 12px; color: var(--text-secondary);
     }
     .cat-badge { padding: 2px 8px; border-radius: 10px; background: var(--bg); font-weight: 500; }
+    .thought-card { position: relative; }
+    .swipe-label {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      font-size: 20px; opacity: 0; pointer-events: none; transition: opacity 0.1s;
+    }
+    .swipe-label-right { left: 12px; }
+    .swipe-label-left { right: 12px; }
     .empty { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
     .empty-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
     .empty-title { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
@@ -327,6 +334,13 @@
             </div>
             <input type="time" class="time-input" id="reminder-time" value="20:00">
           </div>
+          <div class="setting-row" id="notif-row">
+            <div>
+              <div class="setting-label">Уведомления</div>
+              <div class="setting-desc" id="notif-desc">Для системных напоминаний</div>
+            </div>
+            <button class="btn btn-secondary" style="padding:8px 14px;flex:initial;" id="notif-btn">Разрешить</button>
+          </div>
         </div>
         <div class="section-title">Данные</div>
         <div class="card-block">
@@ -346,7 +360,7 @@
           </div>
         </div>
         <div style="text-align:center;margin-top:24px;font-size:12px;color:var(--text-secondary);">
-          MindVault v0.2
+          MindVault v0.3
         </div>
       </section>
     </div>
@@ -400,15 +414,15 @@
         <div class="onboarding-step">
           <div class="onboarding-step-num">2</div>
           <div class="onboarding-step-text">
-            <div class="onboarding-step-title">Тап — готово, долго — правка</div>
-            <div class="onboarding-step-desc">Один тап по мысли отмечает её выполненной. Долгое нажатие открывает меню: редактировать или удалить.</div>
+            <div class="onboarding-step-title">Тап — готово · свайп вправо — тоже</div>
+            <div class="onboarding-step-desc">Один тап или свайп вправо отмечает мысль выполненной. Свайп влево — удаляет. Долгое нажатие — редактирование.</div>
           </div>
         </div>
         <div class="onboarding-step">
           <div class="onboarding-step-num">3</div>
           <div class="onboarding-step-text">
-            <div class="onboarding-step-title">Всё хранится на твоём телефоне</div>
-            <div class="onboarding-step-desc">Данные не покидают устройство. В Настройках можно включить ежедневное напоминание и экспортировать список.</div>
+            <div class="onboarding-step-title">Напоминания и приватность</div>
+            <div class="onboarding-step-desc">В Настройках включи ежедневное напоминание — приложение пришлёт уведомление. Все данные хранятся только на твоём телефоне.</div>
           </div>
         </div>
       </div>
@@ -512,8 +526,14 @@
         if (s) state.settings = { ...state.settings, ...s };
       } catch(e) {}
     }
-    function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.thoughts)); }
-    function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings)); }
+    function save() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.thoughts));
+      saveReminderDataForSW();
+    }
+    function saveSettings() {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
+      saveReminderDataForSW();
+    }
 
     // ============ LOGIC ============
     function detectCategory(text) {
@@ -594,6 +614,8 @@
       el.innerHTML = list.map(t => {
         const catEmoji = (CATEGORIES.find(c => c.name === t.category) || {}).emoji || '📌';
         return `<div class="thought-card ${t.done ? 'done' : ''}" data-id="${t.id}">
+          <span class="swipe-label swipe-label-right">✓</span>
+          <span class="swipe-label swipe-label-left">🗑</span>
           <div class="check-circle ${t.done ? 'checked' : ''}">${t.done ? '✓' : ''}</div>
           <div class="thought-body">
             <div class="thought-text">${escapeHtml(t.text)}</div>
@@ -605,19 +627,7 @@
         </div>`;
       }).join('');
 
-      el.querySelectorAll('.thought-card').forEach(card => {
-        const id = Number(card.dataset.id);
-        let pressTimer, longPressed = false;
-        const startPress = () => { longPressed = false; pressTimer = setTimeout(() => { longPressed = true; showActionSheet(id); }, 500); };
-        const cancelPress = () => clearTimeout(pressTimer);
-        card.addEventListener('touchstart', startPress, { passive: true });
-        card.addEventListener('touchend', cancelPress);
-        card.addEventListener('touchmove', cancelPress);
-        card.addEventListener('mousedown', startPress);
-        card.addEventListener('mouseup', cancelPress);
-        card.addEventListener('mouseleave', cancelPress);
-        card.addEventListener('click', () => { if (!longPressed) toggleDone(id); });
-      });
+      el.querySelectorAll('.thought-card').forEach(card => bindCardEvents(card, Number(card.dataset.id)));
     }
 
     function renderStats() {
@@ -665,6 +675,101 @@
     function renderSettings() {
       document.getElementById('toggle-reminder').classList.toggle('on', state.settings.reminderEnabled);
       document.getElementById('reminder-time').value = state.settings.reminderTime;
+
+      const notifRow = document.getElementById('notif-row');
+      if (!('Notification' in window)) { notifRow.style.display = 'none'; return; }
+      const desc = document.getElementById('notif-desc');
+      const btn = document.getElementById('notif-btn');
+      const perm = Notification.permission;
+      if (perm === 'granted') {
+        desc.textContent = 'Системные уведомления включены';
+        btn.style.display = 'none';
+      } else if (perm === 'denied') {
+        desc.textContent = 'Заблокированы — разрешите в настройках браузера';
+        btn.style.display = 'none';
+      } else {
+        desc.textContent = 'Нажмите, чтобы включить';
+        btn.style.display = '';
+      }
+    }
+
+    // ============ CARD GESTURES ============
+    function bindCardEvents(card, id) {
+      const LONG_MS = 500, SWIPE_THR = 80, MOVE_THR = 8;
+      let startX = 0, currentX = 0;
+      let pressTimer = null, longPressed = false, swiping = false;
+
+      const labelRight = card.querySelector('.swipe-label-right');
+      const labelLeft = card.querySelector('.swipe-label-left');
+
+      function resetCard() {
+        card.style.transition = 'transform 0.2s ease, background 0.2s ease';
+        card.style.transform = '';
+        card.style.background = '';
+        if (labelRight) labelRight.style.opacity = '0';
+        if (labelLeft) labelLeft.style.opacity = '0';
+        swiping = false;
+        longPressed = false;
+      }
+
+      function onStart(x) {
+        startX = x; currentX = 0; longPressed = false; swiping = false;
+        pressTimer = setTimeout(() => {
+          if (!swiping) { longPressed = true; showActionSheet(id); }
+        }, LONG_MS);
+      }
+
+      function onMove(x) {
+        currentX = x - startX;
+        if (!swiping && Math.abs(currentX) > MOVE_THR) {
+          swiping = true;
+          clearTimeout(pressTimer);
+        }
+        if (!swiping) return;
+        const clamped = Math.max(-130, Math.min(130, currentX));
+        const ratio = Math.min(Math.abs(clamped) / 120, 1);
+        card.style.transition = 'none';
+        card.style.transform = `translateX(${clamped}px)`;
+        if (currentX > 0) {
+          card.style.background = `rgba(16,185,129,${(ratio * 0.25).toFixed(2)})`;
+          if (labelRight) labelRight.style.opacity = ratio.toFixed(2);
+          if (labelLeft) labelLeft.style.opacity = '0';
+        } else {
+          card.style.background = `rgba(239,68,68,${(ratio * 0.25).toFixed(2)})`;
+          if (labelLeft) labelLeft.style.opacity = ratio.toFixed(2);
+          if (labelRight) labelRight.style.opacity = '0';
+        }
+      }
+
+      function onEnd() {
+        clearTimeout(pressTimer);
+        if (swiping) {
+          if (currentX > SWIPE_THR) {
+            card.style.transition = 'transform 0.26s ease, opacity 0.26s ease';
+            card.style.transform = 'translateX(110%)';
+            card.style.opacity = '0';
+            setTimeout(() => toggleDone(id), 260);
+          } else if (currentX < -SWIPE_THR) {
+            card.style.transition = 'transform 0.26s ease, opacity 0.26s ease';
+            card.style.transform = 'translateX(-110%)';
+            card.style.opacity = '0';
+            setTimeout(() => deleteThought(id), 260);
+          } else {
+            resetCard();
+          }
+        } else if (!longPressed) {
+          toggleDone(id);
+        }
+      }
+
+      card.addEventListener('touchstart', e => onStart(e.touches[0].clientX), { passive: true });
+      card.addEventListener('touchmove', e => onMove(e.touches[0].clientX), { passive: true });
+      card.addEventListener('touchend', onEnd);
+      card.addEventListener('touchcancel', resetCard);
+      card.addEventListener('mousedown', e => onStart(e.clientX));
+      card.addEventListener('mousemove', e => { if (e.buttons === 1) onMove(e.clientX); });
+      card.addEventListener('mouseup', onEnd);
+      card.addEventListener('mouseleave', () => { clearTimeout(pressTimer); });
     }
 
     // ============ SHEET ============
@@ -709,6 +814,60 @@
       actionTargetId = null;
       document.getElementById('backdrop').classList.remove('open');
       document.getElementById('action-sheet').classList.remove('open');
+    }
+
+    // ============ NOTIFICATIONS ============
+    async function checkAndNotify() {
+      if (!state.settings.reminderEnabled) return;
+      if (!('Notification' in window) || Notification.permission !== 'granted') return;
+      const today = new Date().toISOString().slice(0, 10);
+      if (localStorage.getItem(REMINDER_SEEN_KEY) === today) return;
+      const [h, m] = state.settings.reminderTime.split(':').map(Number);
+      const now = new Date();
+      if (now.getHours() < h || (now.getHours() === h && now.getMinutes() < m)) return;
+      const active = state.thoughts.filter(t => !t.done).length;
+      if (active === 0) return;
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        await reg.showNotification('MindVault', {
+          body: `${active} незакрытых ${pluralize(active,'мысль','мысли','мыслей')} — самое время разобраться`,
+          icon: './icon-192.png',
+          badge: './icon-192.png',
+          tag: 'daily-reminder',
+          renotify: false
+        });
+        localStorage.setItem(REMINDER_SEEN_KEY, today);
+        renderReminder();
+      } catch(e) {}
+    }
+
+    async function registerPeriodicSync() {
+      if (!('serviceWorker' in navigator)) return;
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        if ('periodicSync' in reg) {
+          const status = await navigator.permissions.query({ name: 'periodic-background-sync' });
+          if (status.state === 'granted') {
+            await reg.periodicSync.register('mindvault-daily-reminder', {
+              minInterval: 20 * 60 * 60 * 1000
+            });
+          }
+        }
+      } catch(e) {}
+    }
+
+    async function saveReminderDataForSW() {
+      if (!('caches' in window)) return;
+      try {
+        const active = state.thoughts.filter(t => !t.done).length;
+        const cache = await caches.open('mindvault-data');
+        await cache.put('reminder-data', new Response(JSON.stringify({
+          enabled: state.settings.reminderEnabled,
+          time: state.settings.reminderTime,
+          activeCount: active,
+          lastShown: localStorage.getItem(REMINDER_SEEN_KEY) || ''
+        }), { headers: { 'Content-Type': 'application/json' } }));
+      } catch(e) {}
     }
 
     // ============ UI HELPERS ============
@@ -846,11 +1005,24 @@
       });
 
       document.getElementById('toggle-reminder').addEventListener('click', async () => {
-        if (!state.settings.reminderEnabled && 'Notification' in window && Notification.permission !== 'granted') {
+        if (!state.settings.reminderEnabled && 'Notification' in window && Notification.permission === 'default') {
           await Notification.requestPermission();
+          renderSettings();
         }
         state.settings.reminderEnabled = !state.settings.reminderEnabled;
-        saveSettings(); renderSettings(); renderReminder();
+        saveSettings();
+        if (state.settings.reminderEnabled) {
+          await registerPeriodicSync();
+          await checkAndNotify();
+        }
+        renderSettings(); renderReminder();
+      });
+
+      document.getElementById('notif-btn').addEventListener('click', async () => {
+        await Notification.requestPermission();
+        await registerPeriodicSync();
+        if (state.settings.reminderEnabled) await checkAndNotify();
+        renderSettings();
       });
 
       document.getElementById('reminder-time').addEventListener('change', e => {
@@ -872,7 +1044,9 @@
         }
       });
 
-      document.addEventListener('visibilitychange', () => { if (!document.hidden) renderReminder(); });
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) { renderReminder(); checkAndNotify(); }
+      });
     }
 
     // ============ SW ============
@@ -886,6 +1060,8 @@
     bindEvents();
     render();
     initOnboarding();
+    checkAndNotify();
+    saveReminderDataForSW();
   </script>
 </body>
 </html>
